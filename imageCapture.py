@@ -1,4 +1,5 @@
 import cv2
+
 # if (you have only 1 webcam){ set device = 0} else{ chose your favorite webcam setting device = 1, 2 ,3 ... }
 cap = cv2.VideoCapture(0)
 while True:

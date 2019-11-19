@@ -2,7 +2,6 @@
 from imutils import face_utils
 import dlib
 import cv2
-
 # initialize dlib's face detector (HOG-based) and then create
 # the facial landmark predictor
 p = "shape_predictor_68_face_landmarks.dat"
