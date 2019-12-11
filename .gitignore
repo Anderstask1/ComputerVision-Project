@@ -1,0 +1,4 @@
+# Ignore, aka do not upload to github, all .avi files in "videos" folders (too big, mp4 is used
+*.mp4
+*.avi
+yolo-coco/yolov3.weights
