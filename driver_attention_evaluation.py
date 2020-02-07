@@ -10,6 +10,19 @@ import dlib
 import time
 import cv2
 import os
+from face_mapping_analysis import eye_closed_detection
+
+# Threshold for number of frames without face
+NO_FACE_THRESHOLD = 3
+
+# define two constants, one for the eye aspect ratio to indicate
+# blink and then a second constant for the number of consecutive
+# frames the eye must be below the threshold
+EYE_AR_THRESH = 0.3
+EYE_AR_CONSEC_FRAMES = 3
+
+# Threshold for number of frames with phone
+PHONE_THRESHOLD = 3
 
 # construct the argument parse and parse the arguments
 yolo_path = 'yolo-coco'
@@ -75,6 +88,15 @@ predictor = dlib.shape_predictor(p)
 # count current frame for feedback in terminal
 current = 0
 
+# count frames with no face detected
+no_face_count = 0
+
+# count frames with closed eyes
+eyes_closed_count = 0
+
+# count frames with phone
+phone_count = 0
+
 # loop over frames from the video file stream
 while True:
     # read the next frame from the file
@@ -136,10 +158,6 @@ while True:
                 confidences.append(float(confidence))
                 classIDs.append(classID)
 
-                # evaluate if driver is distracted based on yolo object detection
-                print("Evaluate driver attention by yolo object detection")
-				if classID.
-
                 # DLIB head pose estimation
                 # convert input image to grayscale
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -147,27 +165,56 @@ while True:
                 # detect faces in the grayscale image
                 rects = detector(gray, 0)
 
+                # if no face is detected, count for how long
+                if len(rects) == 0:
+                    no_face_count += 1
+                    eyes_closed_count = 0
+                else:
+                    no_face_count = 0
+
+                if no_face_count > NO_FACE_THRESHOLD:
+                    # draw inattention detection box
+                    cv2.putText(frame, "INATTENTION DETECTED: driver is looking in the wrong direction", (10, 400),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
                 # loop over the face detections
                 for (i, rect) in enumerate(rects):
                     # determine the facial landmarks for the face region, then
-                    # convert the facial landmark (x, y)-coordinates to a NumPy
-                    # array
+                    # convert the facial landmark (x, y)-coordinates to a NumPy array
                     shape = predictor(gray, rect)
                     shape = face_utils.shape_to_np(shape)
 
-                    # loop over the (x, y)-coordinates for the facial landmarks
-                    # and draw them on the image
+                    # loop over the (x, y)-coordinates for the facial landmarks and draw them on the image
                     for (x, y) in shape:
                         cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
 
-					# evaluate if driver is distracted based on dlib face detection and mapping
-					print("Evaluate driver attention by dlib face detection and mapping")
+                    # evaluate if driver is distracted based on dlib face detection and mapping
 
+                    # count number of frames with eyes closed
+                    eyes_closed_count = eye_closed_detection(shape, eyes_closed_count, EYE_AR_THRESH)
+
+                    # if the eyes were closed for more frames than threshold
+                    if eyes_closed_count >= EYE_AR_CONSEC_FRAMES:
+                        # draw inattention detection box
+                        cv2.putText(frame, "INATTENTINO DETECTED: the eyes of the driver is closed", (10, 500),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
 
     # apply non-maxima suppression to suppress weak, overlapping
     # bounding boxes
     idxs = cv2.dnn.NMSBoxes(boxes, confidences, args["confidence"], args["threshold"])
+
+    # draw the count of frames with no face
+    cv2.putText(frame, "No face for: {}".format(no_face_count), (10, 100),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+    # draw the total number of frames with eyes closed
+    cv2.putText(frame, "Eyes closed for: {} frames".format(eyes_closed_count), (10, 200),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+    # draw the total number of frames with eyes closed
+    cv2.putText(frame, "Phone used for: {} frames".format(phone_count), (10, 300),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
     # ensure at least one detection exists
     if len(idxs) > 0:
@@ -182,6 +229,22 @@ while True:
             cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
             text = "{}: {:.4f}".format(LABELS[classIDs[i]], confidences[i])
             cv2.putText(frame, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+            # if phone is detected, count number of frames
+            if text == "cell phone":
+                phone_count += 1
+            else:
+                phone_count = 0
+
+            if phone_count > PHONE_THRESHOLD:
+                # draw inattention detection box
+                cv2.putText(frame, "INATTENTINO DETECTED: phone used", (10, 600),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+
+
+
+
 
     # check if the video writer is None
     if writer is None:
