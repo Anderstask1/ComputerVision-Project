@@ -119,6 +119,7 @@ while True:
     start = time.time()
     layerOutputs = net.forward(ln)
     end = time.time()
+    elap = (end - start)
 
     # initialize our lists of detected bounding boxes, confidences,
     # and class IDs, respectively
@@ -205,15 +206,15 @@ while True:
     idxs = cv2.dnn.NMSBoxes(boxes, confidences, args["confidence"], args["threshold"])
 
     # draw the count of frames with no face
-    cv2.putText(frame, "No face for: {}".format(no_face_count), (10, 100),
+    cv2.putText(frame, "No face for: {}".format(elap*no_face_count), (10, 100),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
     # draw the total number of frames with eyes closed
-    cv2.putText(frame, "Eyes closed for: {} frames".format(eyes_closed_count), (10, 200),
+    cv2.putText(frame, "Eyes closed for: {} frames".format(elap*eyes_closed_count), (10, 200),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
     # draw the total number of frames with eyes closed
-    cv2.putText(frame, "Phone used for: {} frames".format(phone_count), (10, 300),
+    cv2.putText(frame, "Phone used for: {} frames".format(elap*phone_count), (10, 300),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
     # ensure at least one detection exists
@@ -231,7 +232,7 @@ while True:
             cv2.putText(frame, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
             # if phone is detected, count number of frames
-            if text == "cell phone":
+            if text.split(":")[0] == "cell phone":
                 phone_count += 1
             else:
                 phone_count = 0
@@ -241,11 +242,6 @@ while True:
                 cv2.putText(frame, "INATTENTINO DETECTED: phone used", (10, 600),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-
-
-
-
-
     # check if the video writer is None
     if writer is None:
         # initialize our video writer
@@ -254,7 +250,6 @@ while True:
 
         # some information on processing single frame
         if total > 0:
-            elap = (end - start)
             print("[INFO] single frame took {:.4f} seconds".format(elap))
             print("[INFO] estimated total time to finish (in seconds): {:.4f}".format(elap * total))
             print("[INFO] estimated total time to finish (in minutes): {:.4f}".format((elap * total)/60))
