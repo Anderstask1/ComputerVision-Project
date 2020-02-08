@@ -13,17 +13,25 @@ import os
 from face_mapping_analysis import eye_closed_detection, no_face_detection
 from object_detection_analysis import cell_phone_detection
 
+# Frame rate of input video
+FRAME_RATE = 30
+
 # Eye aspect ratio threshold
 EYE_AR_THRESHOLD = 0.3
 
-# Threshold for number of frames without face
-EYES_CLOSED_THRESHOLD = 3
+# Threshold for seconds without face
+EYES_CLOSED_THRESHOLD = 2
 
-# Threshold for number of frames without face
-NO_FACE_THRESHOLD = 3
+# Threshold for seconds without face
+NO_FACE_THRESHOLD = 2
 
-# Threshold for number of frames with phone
-PHONE_THRESHOLD = 3
+# Threshold for seconds with phone
+PHONE_THRESHOLD = 2
+
+# Convert threshold values from seconds to frames
+EYES_CLOSED_THRESHOLD *= FRAME_RATE
+NO_FACE_THRESHOLD *= FRAME_RATE
+PHONE_THRESHOLD *= FRAME_RATE
 
 # construct the argument parse and parse the arguments
 yolo_path = 'yolo-coco'
@@ -116,10 +124,10 @@ while True:
     # and associated probabilities
     blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (416, 416), swapRB=True, crop=False)
     net.setInput(blob)
+
+    # find computational time per frame
     start = time.time()
     layerOutputs = net.forward(ln)
-    end = time.time()
-    elap = (end - start)
 
     # initialize our lists of detected bounding boxes, confidences,
     # and class IDs, respectively
@@ -198,9 +206,9 @@ while True:
     idxs = cv2.dnn.NMSBoxes(boxes, confidences, args["confidence"], args["threshold"])
 
     # Compute seconds from frame
-    no_face_sec = elap*no_face_count
-    eyes_closed_sec = elap*eyes_closed_count
-    phone_sec = elap*phone_count
+    no_face_sec = no_face_count/FRAME_RATE
+    eyes_closed_sec = eyes_closed_count/FRAME_RATE
+    phone_sec = phone_count/FRAME_RATE
 
     # draw seconds with no face, 2 digits after comma
     cv2.putText(frame, "No face for: {} seconds".format("%.2f" % no_face_sec), (10, 100),
@@ -213,6 +221,10 @@ while True:
     # draw seconds of frames with eyes closed, 2 digits after comma
     cv2.putText(frame, "Phone used for: {} seconds".format("%.2f" % phone_sec), (10, 300),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+    # find computational time per frame
+    end = time.time()
+    elap = (end - start)
 
     # ensure at least one detection exists
     if len(idxs) > 0:
