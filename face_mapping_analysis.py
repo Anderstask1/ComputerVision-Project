@@ -44,3 +44,10 @@ def eye_closed_detection(shape, counter, EYE_AR_THRESH):
         counter = 0
 
     return counter
+
+def no_face_detection(rects, counter):
+    # if no face is detected, count for how long
+    if len(rects) == 0:
+        return counter + 1
+    else:
+        return 0

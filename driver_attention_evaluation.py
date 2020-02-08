@@ -10,16 +10,17 @@ import dlib
 import time
 import cv2
 import os
-from face_mapping_analysis import eye_closed_detection
+from face_mapping_analysis import eye_closed_detection, no_face_detection
+from object_detection_analysis import cell_phone_detection
+
+# Eye aspect ratio threshold
+EYE_AR_THRESHOLD = 0.3
+
+# Threshold for number of frames without face
+EYES_CLOSED_THRESHOLD = 3
 
 # Threshold for number of frames without face
 NO_FACE_THRESHOLD = 3
-
-# define two constants, one for the eye aspect ratio to indicate
-# blink and then a second constant for the number of consecutive
-# frames the eye must be below the threshold
-EYE_AR_THRESH = 0.3
-EYE_AR_CONSEC_FRAMES = 3
 
 # Threshold for number of frames with phone
 PHONE_THRESHOLD = 3
@@ -40,14 +41,13 @@ ap.add_argument("-t", "--threshold", type=float, default=0.3,
     help="threshold when applyong non-maxima suppression")
 args = vars(ap.parse_args())
 
-# load the COCO class labels our YOLO model was trained on
+# load the COCO class labels the YOLO model was trained on
 labelsPath = os.path.sep.join([args["yolo"], "coco.names"])
 LABELS = open(labelsPath).read().strip().split("\n")
 
 # initialize a list of colors to represent each possible class label
 np.random.seed(42)
-COLORS = np.random.randint(0, 255, size=(len(LABELS), 3),
-    dtype="uint8")
+COLORS = np.random.randint(0, 255, size=(len(LABELS), 3), dtype="uint8")
 
 # derive the paths to the YOLO weights and model configuration
 weightsPath = os.path.sep.join([args["yolo"], "yolov3.weights"])
@@ -131,47 +131,40 @@ while True:
     for output in layerOutputs:
         # loop over each of the detections
         for detection in output:
-            # extract the class ID and confidence (i.e., probability)
-            # of the current object detection
+            # extract the class ID and confidence (i.e., probability) of the current object detection
             scores = detection[5:]
             classID = np.argmax(scores)
             confidence = scores[classID]
 
-            # filter out weak predictions by ensuring the detected
-            # probability is greater than the minimum probability
+            # filter out weak predictions, detected probability > minimum probability
             if confidence > args["confidence"]:
-                # scale the bounding box coordinates back relative to
-                # the size of the image, keeping in mind that YOLO
-                # actually returns the center (x, y)-coordinates of
-                # the bounding box followed by the boxes' width and
+                # scale the bounding box coordinates back relative to the size of the image, keeping in mind that YOLO
+                # actually returns the center (x, y)-coordinates of the bounding box followed by the boxes' width and
                 # height
                 box = detection[0:4] * np.array([W, H, W, H])
                 (centerX, centerY, width, height) = box.astype("int")
 
-                # use the center (x, y)-coordinates to derive the top
-                # and and left corner of the bounding box
+                # use the center (x, y)-coordinates to derive the top and and left corner of the bounding box
                 x = int(centerX - (width / 2))
                 y = int(centerY - (height / 2))
 
-                # update our list of bounding box coordinates,
-                # confidences, and class IDs
+                # update our list of bounding box coordinates, confidences, and class IDs
                 boxes.append([x, y, int(width), int(height)])
                 confidences.append(float(confidence))
                 classIDs.append(classID)
 
-                # DLIB head pose estimation
-                # convert input image to grayscale
+                # DLIB head pose estimation - convert input image to grayscale
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
                 # detect faces in the grayscale image
                 rects = detector(gray, 0)
 
                 # if no face is detected, count for how long
-                if len(rects) == 0:
-                    no_face_count += 1
+                no_face_count = no_face_detection(rects, no_face_count)
+
+                # if no face detected, reset eyes closed counter
+                if no_face_count > 0:
                     eyes_closed_count = 0
-                else:
-                    no_face_count = 0
 
                 if no_face_count > NO_FACE_THRESHOLD:
                     # draw inattention detection box
@@ -180,22 +173,21 @@ while True:
 
                 # loop over the face detections
                 for (i, rect) in enumerate(rects):
-                    # determine the facial landmarks for the face region, then
-                    # convert the facial landmark (x, y)-coordinates to a NumPy array
+                    # determine the facial landmarks for the face region
                     shape = predictor(gray, rect)
+
+                    # convert the facial landmark (x, y)-coordinates to a NumPy array
                     shape = face_utils.shape_to_np(shape)
 
                     # loop over the (x, y)-coordinates for the facial landmarks and draw them on the image
                     for (x, y) in shape:
                         cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
 
-                    # evaluate if driver is distracted based on dlib face detection and mapping
-
                     # count number of frames with eyes closed
-                    eyes_closed_count = eye_closed_detection(shape, eyes_closed_count, EYE_AR_THRESH)
+                    eyes_closed_count = eye_closed_detection(shape, eyes_closed_count, EYE_AR_THRESHOLD)
 
                     # if the eyes were closed for more frames than threshold
-                    if eyes_closed_count >= EYE_AR_CONSEC_FRAMES:
+                    if eyes_closed_count >= EYES_CLOSED_THRESHOLD:
                         # draw inattention detection box
                         cv2.putText(frame, "INATTENTINO DETECTED: the eyes of the driver is closed", (10, 500),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
@@ -205,16 +197,21 @@ while True:
     # bounding boxes
     idxs = cv2.dnn.NMSBoxes(boxes, confidences, args["confidence"], args["threshold"])
 
-    # draw the count of frames with no face
-    cv2.putText(frame, "No face for: {}".format(elap*no_face_count), (10, 100),
+    # Compute seconds from frame
+    no_face_sec = elap*no_face_count
+    eyes_closed_sec = elap*eyes_closed_count
+    phone_sec = elap*phone_count
+
+    # draw seconds with no face, 2 digits after comma
+    cv2.putText(frame, "No face for: {} seconds".format("%.2f" % no_face_sec), (10, 100),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-    # draw the total number of frames with eyes closed
-    cv2.putText(frame, "Eyes closed for: {} frames".format(elap*eyes_closed_count), (10, 200),
+    # draw seconds with eyes closed, 2 digits after comma
+    cv2.putText(frame, "Eyes closed for: {} seconds".format("%.2f" % eyes_closed_sec), (10, 200),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-    # draw the total number of frames with eyes closed
-    cv2.putText(frame, "Phone used for: {} frames".format(elap*phone_count), (10, 300),
+    # draw seconds of frames with eyes closed, 2 digits after comma
+    cv2.putText(frame, "Phone used for: {} seconds".format("%.2f" % phone_sec), (10, 300),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
     # ensure at least one detection exists
@@ -231,11 +228,7 @@ while True:
             text = "{}: {:.4f}".format(LABELS[classIDs[i]], confidences[i])
             cv2.putText(frame, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-            # if phone is detected, count number of frames
-            if text.split(":")[0] == "cell phone":
-                phone_count += 1
-            else:
-                phone_count = 0
+            phone_count = cell_phone_detection(text, phone_count)
 
             if phone_count > PHONE_THRESHOLD:
                 # draw inattention detection box
@@ -261,3 +254,4 @@ while True:
 print("[INFO] cleaning up...")
 writer.release()
 vs.release()
+print("Finished")
